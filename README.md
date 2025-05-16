@@ -20,4 +20,7 @@ Mobile application for easier access and participation
 Multi-chain deployment for cross-chain voting capabilities
 Analytics dashboard for visualizing voting patterns and participation metrics
 
-0x660c8B8CD632a5D3A16F3d7414A1bed3E0Bd9543
+contract address=0x660c8B8CD632a5D3A16F3d7414A1bed3E0Bd9543
+
+![image](https://github.com/user-attachments/assets/bda5a122-676e-43ad-8f48-27a62960ea0d)
+
