@@ -3,7 +3,7 @@ pragma solidity ^0.8.9;
 
 /**
  * @title SimpleVoting
- * @dev A simple voting system contract that allows creating proposals and voting
+ * @dev Voting system with proposals, voting, delegation, quorum, pause, and ownership controls.
  */
 contract SimpleVoting {
     struct Proposal {
@@ -21,16 +21,27 @@ contract SimpleVoting {
     uint256 public proposalCount;
     bool public paused;
 
+    // Voting weights per address (default 1)
+    mapping(address => uint256) public votingWeights;
+
+    // Delegation mapping: voter => delegate
+    mapping(address => address) public delegation;
+
+    // Minimum votes required for quorum (yes + no)
+    uint256 public quorum;
+
     mapping(uint256 => Proposal) private proposals;
 
     event ProposalCreated(uint256 indexed proposalId, string description, uint256 endTime);
-    event Voted(uint256 indexed proposalId, address indexed voter, bool vote);
+    event Voted(uint256 indexed proposalId, address indexed voter, bool vote, uint256 weight);
     event ProposalExecuted(uint256 indexed proposalId, bool passed);
     event ProposalCanceled(uint256 indexed proposalId);
     event VotingExtended(uint256 indexed proposalId, uint256 newEndTime);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
     event Paused();
     event Unpaused();
+    event Delegated(address indexed voter, address indexed delegate);
+    event DelegationRevoked(address indexed voter);
 
     modifier onlyOwner() {
         require(msg.sender == owner, "Only owner can call");
@@ -42,8 +53,39 @@ contract SimpleVoting {
         _;
     }
 
-    constructor() {
+    constructor(uint256 _quorum) {
         owner = msg.sender;
+        quorum = _quorum;
+    }
+
+    /**
+     * @dev Set voting weight for an address (only owner)
+     */
+    function setVotingWeight(address _voter, uint256 _weight) public onlyOwner {
+        require(_voter != address(0), "Zero address");
+        votingWeights[_voter] = _weight;
+    }
+
+    /**
+     * @dev Delegate your vote to another address
+     */
+    function delegateVote(address _delegate) public whenNotPaused {
+        require(_delegate != address(0), "Delegate is zero address");
+        require(_delegate != msg.sender, "Cannot delegate to self");
+        require(delegation[msg.sender] == address(0), "Already delegated");
+
+        delegation[msg.sender] = _delegate;
+        emit Delegated(msg.sender, _delegate);
+    }
+
+    /**
+     * @dev Revoke delegation
+     */
+    function revokeDelegation() public whenNotPaused {
+        require(delegation[msg.sender] != address(0), "No delegation found");
+
+        delegation[msg.sender] = address(0);
+        emit DelegationRevoked(msg.sender);
     }
 
     /**
@@ -75,18 +117,27 @@ contract SimpleVoting {
 
         require(!proposal.canceled, "Proposal canceled");
         require(block.timestamp < proposal.endTime, "Voting period has ended");
-        require(!proposal.hasVoted[msg.sender], "Already voted");
 
-        proposal.hasVoted[msg.sender] = true;
+        // Determine the actual voter who holds the voting power (consider delegation)
+        address actualVoter = _getActualVoter(msg.sender);
+
+        require(!proposal.hasVoted[actualVoter], "Already voted");
+
+        proposal.hasVoted[actualVoter] = true;
         proposal.votersCount++;
 
-        if (_vote) {
-            proposal.yesVotes++;
-        } else {
-            proposal.noVotes++;
+        uint256 weight = votingWeights[actualVoter];
+        if (weight == 0) {
+            weight = 1; // Default voting weight
         }
 
-        emit Voted(_proposalId, msg.sender, _vote);
+        if (_vote) {
+            proposal.yesVotes += weight;
+        } else {
+            proposal.noVotes += weight;
+        }
+
+        emit Voted(_proposalId, actualVoter, _vote, weight);
     }
 
     /**
@@ -100,6 +151,9 @@ contract SimpleVoting {
         require(!proposal.canceled, "Proposal canceled");
         require(block.timestamp >= proposal.endTime, "Voting period not yet ended");
         require(!proposal.executed, "Proposal already executed");
+
+        // Check quorum
+        require(proposal.yesVotes + proposal.noVotes >= quorum, "Quorum not met");
 
         proposal.executed = true;
 
@@ -174,8 +228,13 @@ contract SimpleVoting {
      */
     function hasUserVoted(uint256 _proposalId, address _voter) public view returns (bool) {
         require(_proposalId > 0 && _proposalId <= proposalCount, "Invalid proposal ID");
+
         Proposal storage proposal = proposals[_proposalId];
-        return proposal.hasVoted[_voter];
+
+        // Voting power is counted via delegate, so check the actual voter
+        address actualVoter = _getActualVoter(_voter);
+
+        return proposal.hasVoted[actualVoter];
     }
 
     /**
@@ -254,11 +313,19 @@ contract SimpleVoting {
     }
 
     /**
-     * @dev Withdraw any ETH sent to contract (should never hold ETH, but just in case)
+     * @dev Internal helper to get the actual voter considering delegation
      */
-    function withdrawEther() public onlyOwner {
-        uint256 balance = address(this).balance;
-        require(balance > 0, "No ether to withdraw");
-        payable(owner).transfer(balance);
+    function _getActualVoter(address _voter) internal view returns (address) {
+        // Follow delegation chain until no delegate
+        address current = _voter;
+        // To prevent infinite loops, max 10 delegation hops
+        for (uint256 i = 0; i < 10; i++) {
+            address nextDelegate = delegation[current];
+            if (nextDelegate == address(0)) {
+                break;
+            }
+            current = nextDelegate;
+        }
+        return current;
     }
 }
