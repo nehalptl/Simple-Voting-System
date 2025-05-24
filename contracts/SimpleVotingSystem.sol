@@ -14,7 +14,7 @@ contract SimpleVoting {
         bool executed;
         bool canceled;
         uint256 votersCount;
-        mapping(address => bool) hasVoted;
+        mapping(address => bool) hasVote
     }
 
     address public owner;
