@@ -21,7 +21,7 @@ contract SimpleVoting {
     uint256 public proposalCount;
     bool public paused;
 
-    // Voting weights per address (default 1)
+    // Voting weights per addres (default 1)
     mapping(address => uint256) public votingWeights;
 
     // Delegation mapping: voter => delegate
