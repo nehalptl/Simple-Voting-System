@@ -11,7 +11,7 @@ contract SimpleVoting {
         uint256 yesVotes;
         uint256 noVotes;
         uint256 endTime;
-        bool executed;
+        bool exec
         bool canceled;
         uint256 votersCount;
         mapping(address => bool) hasVote
